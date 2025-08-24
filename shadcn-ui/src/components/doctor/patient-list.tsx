@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Patient, TriageItem } from "@/types";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, AlertTriangle, Clock, CheckCircle, ArrowRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getPatients, updatePatientStatus } from '@/lib/tidb';
+import type { Patient } from '@/types';
+
+
 
 interface PatientListProps {
   patients: (Patient & { triage?: TriageItem })[];
@@ -174,5 +178,59 @@ export function PatientList({ patients, onSelectPatient }: PatientListProps) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+
+export function PatientList() {
+  const [patients, setPatients] = useState<Patient[]>([]);
+
+  const fetchPatients = async () => {
+    try {
+      const data = await getPatients();
+      setPatients(data);
+    } catch (error) {
+      console.error('Error fetching patients:', error);
+    }
+  };
+
+  useEffect(() => {
+    fetchPatients();
+    const interval = setInterval(fetchPatients, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStatusUpdate = async (id: number, status: Patient['status']) => {
+    try {
+      await updatePatientStatus(id, status);
+      fetchPatients(); // Refresh the list
+    } catch (error) {
+      console.error('Error updating patient status:', error);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {patients.map((patient) => (
+        <Card key={patient.id} className="p-4">
+          <h3 className="font-bold">{patient.name}</h3>
+          <p className="text-sm text-gray-600">{patient.symptoms}</p>
+          <div className="flex gap-2 mt-2">
+            <Button 
+              onClick={() => handleStatusUpdate(patient.id, 'in_progress')}
+              disabled={patient.status === 'in_progress'}
+            >
+              Start
+            </Button>
+            <Button 
+              onClick={() => handleStatusUpdate(patient.id, 'completed')}
+              disabled={patient.status === 'completed'}
+            >
+              Complete
+            </Button>
+          </div>
+        </Card>
+      ))}
+    </div>
   );
 }

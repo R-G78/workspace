@@ -6,19 +6,41 @@ import { Button } from "@/components/ui/button";
 import { AlertCircle, AlertTriangle, Clock, CheckCircle, ArrowRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { getPatients, updatePatientStatus } from '@/lib/tidb';
-import type { Patient } from '@/types';
+import { getPatients } from '@/lib/mock-data';
+
 
 
 
 interface PatientListProps {
-  patients: (Patient & { triage?: TriageItem })[];
-  onSelectPatient: (patient: Patient & { triage?: TriageItem }) => void;
+  patients?: Patient[];
+  onSelectPatient?: (patient: Patient) => void;
 }
 
-export function PatientList({ patients, onSelectPatient }: PatientListProps) {
+export function PatientList({ patients: initialPatients, onSelectPatient }: PatientListProps) {
+  const [patients, setPatients] = useState<Patient[]>(initialPatients || []);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<string>("all");
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchPatients = async () => {
+    try {
+      setError(null);
+      const data = await getPatients();
+      setPatients(data);
+    } catch (error) {
+      setError('Failed to fetch patients');
+      console.error('Error fetching patients:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPatients();
+    const interval = setInterval(fetchPatients, 5000);
+    return () => clearInterval(interval);
+  }, []);
 
   const getPriorityIcon = (priority?: string) => {
     switch (priority) {
@@ -69,11 +91,14 @@ export function PatientList({ patients, onSelectPatient }: PatientListProps) {
     })
     .filter((patient) => {
       if (!searchQuery) return true;
-      return (
-        patient.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        patient.id.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      const q = searchQuery.toLowerCase();
+      const name = (patient.name || "").toLowerCase();
+      const idStr = String(patient.id ?? "").toLowerCase();
+      return name.includes(q) || idStr.includes(q);
     });
+
+  if (isLoading) return <div>Loading patients...</div>;
+  if (error) return <div>Error: {error}</div>;
 
   return (
     <Card className="h-[calc(100vh-13rem)] flex flex-col">
@@ -144,7 +169,7 @@ export function PatientList({ patients, onSelectPatient }: PatientListProps) {
               <div 
                 key={patient.id}
                 className="flex items-center justify-between p-3 rounded-md border hover:bg-muted/50 cursor-pointer"
-                onClick={() => onSelectPatient(patient)}
+                onClick={() => onSelectPatient?.(patient)}
               >
                 <div className="flex items-center space-x-3">
                   <Avatar>
@@ -178,59 +203,5 @@ export function PatientList({ patients, onSelectPatient }: PatientListProps) {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-
-export function PatientList() {
-  const [patients, setPatients] = useState<Patient[]>([]);
-
-  const fetchPatients = async () => {
-    try {
-      const data = await getPatients();
-      setPatients(data);
-    } catch (error) {
-      console.error('Error fetching patients:', error);
-    }
-  };
-
-  useEffect(() => {
-    fetchPatients();
-    const interval = setInterval(fetchPatients, 5000); // Poll every 5 seconds
-    return () => clearInterval(interval);
-  }, []);
-
-  const handleStatusUpdate = async (id: number, status: Patient['status']) => {
-    try {
-      await updatePatientStatus(id, status);
-      fetchPatients(); // Refresh the list
-    } catch (error) {
-      console.error('Error updating patient status:', error);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {patients.map((patient) => (
-        <Card key={patient.id} className="p-4">
-          <h3 className="font-bold">{patient.name}</h3>
-          <p className="text-sm text-gray-600">{patient.symptoms}</p>
-          <div className="flex gap-2 mt-2">
-            <Button 
-              onClick={() => handleStatusUpdate(patient.id, 'in_progress')}
-              disabled={patient.status === 'in_progress'}
-            >
-              Start
-            </Button>
-            <Button 
-              onClick={() => handleStatusUpdate(patient.id, 'completed')}
-              disabled={patient.status === 'completed'}
-            >
-              Complete
-            </Button>
-          </div>
-        </Card>
-      ))}
-    </div>
   );
 }

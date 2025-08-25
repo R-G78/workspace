@@ -82,7 +82,7 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
         allergies,
         currentMedications,
         emergencyContact: values.emergencyContact,
-      };
+      } as Patient;
 
       // Create triage item
       const triageItem: Partial<TriageItem> = {
@@ -92,13 +92,19 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
         status: "new",
         category: "general", // Default category
         timestamp: new Date().toISOString(),
-        patientId: patient.id,
+        patientId: String(patient.id),
       };
 
       // Process through our agent workflow
       const processedItem = await processNewItem(triageItem as TriageItem);
       
       // In a real app, we would save the patient record to the database here
+      // const connection = await pool.getConnection();
+      // await connection.execute(
+      //   'INSERT INTO patients (name, symptoms, status) VALUES (?, ?, ?)',
+      //   [patient.name, triageItem.description, 'waiting']
+      // );
+      // connection.release();
       
       // Notify parent component
       onCheckInComplete({
@@ -353,53 +359,3 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
   );
 }
 
-import { useState } from 'react';
-import { createPatient } from '@/lib/tidb';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
-import { toast } from '@/components/ui/use-toast';
-
-export function CheckInForm() {
-  const [formData, setFormData] = useState({
-    name: '',
-    symptoms: '',
-  });
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await createPatient({
-        ...formData,
-        status: 'waiting'
-      });
-      toast({
-        title: "Check-in successful",
-        description: "A doctor will be with you shortly."
-      });
-      setFormData({ name: '', symptoms: '' });
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to check in. Please try again.",
-        variant: "destructive"
-      });
-    }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <Input
-        placeholder="Your name"
-        value={formData.name}
-        onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-      />
-      <Textarea
-        placeholder="Describe your symptoms"
-        value={formData.symptoms}
-        onChange={(e) => setFormData(prev => ({ ...prev, symptoms: e.target.value }))}
-      />
-      <Button type="submit">Check In</Button>
-    </form>
-  );
-}

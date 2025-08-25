@@ -1,3 +1,10 @@
+export interface TriageResult {
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  specialty: string;
+  confidence: number;
+  reasoning?: string;
+}
+
 export interface TriageItem {
   id: string;
   title: string;
@@ -20,6 +27,8 @@ export interface TriageItem {
   waitTime?: number;
   room?: string;
   notes?: string[];
+  vector?: number[];
+  aiAnalysis?: TriageResult;
 }
 
 export interface TriageStats {
@@ -49,25 +58,5 @@ export interface User {
   profileImage?: string;
 }
 
-export interface Patient {
-  id: string;
-  name: string;
-  age: number;
-  gender: string;
-  medicalHistory?: string;
-  allergies?: string[];
-  currentMedications?: string[];
-  insuranceInfo?: string;
-  contactNumber?: string;
-  emergencyContact?: string;
-}
-
-export interface Doctor {
-  id: string;
-  name: string;
-  specialization: string;
-  department: string;
-  availability: 'available' | 'busy' | 'off-duty';
-  contactNumber?: string;
-  email: string;
-}
+export * from './patient';
+export * from './doctor';

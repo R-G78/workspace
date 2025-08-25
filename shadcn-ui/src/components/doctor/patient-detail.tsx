@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Patient, TriageItem, Doctor } from "@/types";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+type StatusType = TriageItem['status'];
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,9 +21,9 @@ interface PatientDetailProps {
 }
 
 export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDetailProps) {
-  const [status, setStatus] = useState(patient.triage?.status || "new");
-  const [assignedDoctor, setAssignedDoctor] = useState(patient.triage?.assignedDoctor || "");
-  const [room, setRoom] = useState(patient.triage?.room || "");
+  const [status, setStatus] = useState<StatusType>(patient.triage?.status || "new");
+  const [assignedDoctor, setAssignedDoctor] = useState(patient.triage?.assignedDoctor || "unassigned");
+  const [room, setRoom] = useState(patient.triage?.room || "not_assigned");
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -386,7 +387,10 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
           <CardFooter className="border-t bg-muted/20 flex flex-wrap gap-4">
             <div className="space-y-1 flex-1">
               <label htmlFor="status" className="text-xs">Status</label>
-              <Select value={status} onValueChange={setStatus}>
+              <Select 
+                value={status} 
+                onValueChange={(value: StatusType) => setStatus(value)}
+              >
                 <SelectTrigger id="status">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
@@ -406,7 +410,7 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
                   <SelectValue placeholder="Assign to" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Unassigned</SelectItem>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
                   {doctors.map(doctor => (
                     <SelectItem key={doctor.id} value={doctor.id}>
                       Dr. {doctor.name} ({doctor.specialization})
@@ -423,7 +427,7 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
                   <SelectValue placeholder="Room" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Not assigned</SelectItem>
+                  <SelectItem value="not_assigned">Not assigned</SelectItem>
                   <SelectItem value="A1">Room A1</SelectItem>
                   <SelectItem value="A2">Room A2</SelectItem>
                   <SelectItem value="B1">Room B1</SelectItem>

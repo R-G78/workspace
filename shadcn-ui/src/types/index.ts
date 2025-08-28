@@ -1,10 +1,3 @@
-export interface TriageResult {
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  specialty: string;
-  confidence: number;
-  reasoning?: string;
-}
-
 export interface TriageItem {
   id: string;
   title: string;
@@ -27,8 +20,6 @@ export interface TriageItem {
   waitTime?: number;
   room?: string;
   notes?: string[];
-  vector?: number[];
-  aiAnalysis?: TriageResult;
 }
 
 export interface TriageStats {
@@ -58,5 +49,12 @@ export interface User {
   profileImage?: string;
 }
 
+export interface Patient {
+  id: number;
+  name: string;
+  symptoms: string;
+  status: 'waiting' | 'in_progress' | 'completed';
+  created_at: Date;
+}
+
 export * from './patient';
-export * from './doctor';

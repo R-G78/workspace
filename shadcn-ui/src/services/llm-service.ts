@@ -1,130 +1,123 @@
 import OpenAI from 'openai';
-import { TriageResult } from './types';
+import type { Message } from '../types/chat';
+import type { TriageResult } from '../types/triage';
+import { CRITICAL_SYMPTOMS } from '../lib/constants';
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+class LLMService {
+  private openai: OpenAI;
+  private systemPrompt: string;
 
-export async function analyzeSymptomsWithLLM(
-  symptoms: string,
-  medicalHistory?: string
-): Promise<TriageResult> {
-  const prompt = `As a medical AI assistant, analyze the following patient symptoms and medical history to determine:
-1. Priority level (critical, high, medium, or low)
-2. Medical specialty needed
-3. Brief reasoning for the assessment
+  constructor() {
+    this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    this.systemPrompt = `You are an AI medical triage assistant. Your role is to:
+1. Assess patient symptoms and medical history
+2. Determine urgency and priority level
+3. Recommend appropriate next steps
+4. Estimate wait times based on severity
 
-Patient Symptoms: ${symptoms}
-Medical History: ${medicalHistory || 'None provided'}
+Provide responses in a clear, professional format.`;
+  }
 
-Respond in JSON format like:
-{
-  "priority": "critical|high|medium|low",
-  "specialty": "specialty name",
-  "reasoning": "brief explanation",
-  "confidence": 0.0-1.0
-}`;
+  async triagePatient(symptoms: string, medicalHistory?: string): Promise<TriageResult> {
+    const messages: Message[] = [
+      { role: 'system', content: this.systemPrompt },
+      { role: 'user', content: `Patient Symptoms: ${symptoms}\nMedical History: ${medicalHistory || 'None provided'}` }
+    ];
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4",  // Using GPT-4 for better medical reasoning
-      messages: [
-        {
-          role: "system",
-          content: "You are a medical triage AI assistant with expertise in emergency medicine and patient assessment."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      temperature: 0.3,  // Lower temperature for more consistent medical assessments
-      max_tokens: 300
-    });
+    try {
+      const completion = await this.openai.chat.completions.create({
+        model: 'gpt-4',
+        messages: messages.map(m => ({ role: m.role, content: m.content })),
+        temperature: 0.3
+      });
 
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+      const response = completion.choices[0]?.message?.content;
+      if (!response) throw new Error('No response from AI');
+
+      // Check for critical symptoms
+      const hasCriticalSymptoms = CRITICAL_SYMPTOMS.some(symptom => 
+        symptoms.toLowerCase().includes(symptom.toLowerCase())
+      );
+
+      if (hasCriticalSymptoms) {
+        return {
+          priority: 'high',
+          category: 'emergency',
+          recommendedActions: ['Immediate medical attention required'],
+          estimatedWaitTime: 0,
+          requiresImmediateAttention: true,
+          vitalSignsRequired: ['all'],
+          reasoning: 'Critical symptoms detected - requires immediate attention'
+        };
+      }
+
+      // Parse AI response and determine triage priority
+      const isUrgent = response.toLowerCase().includes('urgent') || 
+                      response.toLowerCase().includes('emergency');
+      const isMedium = response.toLowerCase().includes('moderate') || 
+                      response.toLowerCase().includes('soon');
+
+      return {
+        priority: isUrgent ? 'high' : isMedium ? 'medium' : 'low',
+        category: this.determineCategory(response),
+        recommendedActions: this.extractActions(response),
+        estimatedWaitTime: this.calculateWaitTime(isUrgent, isMedium),
+        requiresImmediateAttention: isUrgent,
+        vitalSignsRequired: this.determineRequiredVitalSigns(response),
+        reasoning: response
+      };
+    } catch (error) {
+      console.error('Triage error:', error);
+      return {
+        priority: 'medium',
+        category: 'general',
+        recommendedActions: ['Please consult with medical staff'],
+        estimatedWaitTime: 30,
+        requiresImmediateAttention: false,
+        vitalSignsRequired: ['temperature', 'blood_pressure', 'heart_rate'],
+        reasoning: 'Error in AI triage - defaulting to medium priority'
+      };
+    }
+  }
+
+  private determineCategory(response: string): string {
+    if (response.toLowerCase().includes('cardiac')) return 'cardiac';
+    if (response.toLowerCase().includes('respiratory')) return 'respiratory';
+    if (response.toLowerCase().includes('trauma')) return 'trauma';
+    if (response.toLowerCase().includes('neurological')) return 'neurological';
+    return 'general';
+  }
+
+  private extractActions(response: string): string[] {
+    const actions: string[] = [];
+    const lines = response.split('\n');
     
-    return {
-      priority: result.priority || 'medium',
-      specialty: result.specialty || 'general',
-      confidence: result.confidence || 0.7,
-      reasoning: result.reasoning
-    };
-  } catch (error) {
-    console.error('LLM Analysis failed:', error);
-    // Fallback to rule-based system if LLM fails
-    return fallbackAnalysis(symptoms, medicalHistory);
-  }
-}
+    for (const line of lines) {
+      if (line.toLowerCase().includes('recommend') || 
+          line.toLowerCase().includes('should') || 
+          line.toLowerCase().includes('need')) {
+        actions.push(line.trim());
+      }
+    }
 
-// Fallback to our rule-based system if LLM is unavailable
-function fallbackAnalysis(symptoms: string, medicalHistory?: string): TriageResult {
-  // Our existing rule-based logic here
-  const combinedText = `${symptoms} ${medicalHistory || ''}`.toLowerCase();
-  
-  if (CRITICAL_SYMPTOMS.some(s => combinedText.includes(s))) {
-    return {
-      priority: 'critical',
-      specialty: 'emergency',
-      confidence: 0.8,
-      reasoning: 'Critical symptoms detected requiring immediate attention'
-    };
+    return actions.length > 0 ? actions : ['Consult with medical staff'];
   }
 
-  // ... rest of the fallback logic
-  return {
-    priority: 'medium',
-    specialty: 'general',
-    confidence: 0.6,
-    reasoning: 'Default triage assessment based on basic symptom analysis'
-  };
-}
-
-// Vector embedding using OpenAI
-export async function generateEmbedding(text: string): Promise<number[]> {
-  try {
-    const response = await openai.embeddings.create({
-      model: "text-embedding-ada-002",
-      input: text,
-    });
-
-    return response.data[0].embedding;
-  } catch (error) {
-    console.error('Embedding generation failed:', error);
-    // Fallback to random embedding if OpenAI is unavailable
-    return Array(1536).fill(0).map(() => Math.random() - 0.5);
+  private calculateWaitTime(isUrgent: boolean, isMedium: boolean): number {
+    if (isUrgent) return 0;
+    if (isMedium) return 30;
+    return 60;
   }
-}
 
-// Enhanced similarity search using embeddings
-export async function findSimilarCases(
-  symptoms: string,
-  previousCases: any[],  // Replace with proper type
-  limit: number = 5
-): Promise<any[]> {  // Replace with proper type
-  try {
-    const queryEmbedding = await generateEmbedding(symptoms);
+  private determineRequiredVitalSigns(response: string): string[] {
+    const vitalSigns: string[] = ['temperature', 'blood_pressure'];
     
-    // Calculate cosine similarity with previous cases
-    const casesWithSimilarity = previousCases.map(case_ => ({
-      ...case_,
-      similarity: cosineSimilarity(queryEmbedding, case_.embedding)
-    }));
-
-    // Sort by similarity and return top matches
-    return casesWithSimilarity
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, limit);
-  } catch (error) {
-    console.error('Similar case search failed:', error);
-    return [];
+    if (response.toLowerCase().includes('heart')) vitalSigns.push('heart_rate');
+    if (response.toLowerCase().includes('breath')) vitalSigns.push('respiratory_rate');
+    if (response.toLowerCase().includes('oxygen')) vitalSigns.push('oxygen_saturation');
+    
+    return vitalSigns;
   }
 }
 
-// Utility function for cosine similarity
-function cosineSimilarity(a: number[], b: number[]): number {
-  const dotProduct = a.reduce((sum, val, i) => sum + val * b[i], 0);
-  const magnitudeA = Math.sqrt(a.reduce((sum, val) => sum + val * val, 0));
-  const magnitudeB = Math.sqrt(b.reduce((sum, val) => sum + val * val, 0));
-  return dotProduct / (magnitudeA * magnitudeB);
-}
+export default LLMService;

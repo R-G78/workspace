@@ -12,10 +12,7 @@ export default defineConfig(({ mode }) => ({
     viteSourceLocator({
       prefix: "mgx",
     }),
-    react({
-      jsxRuntime: 'classic',
-      fastRefresh: false
-    }),
+    react(),
   ],
   resolve: {
     alias: {

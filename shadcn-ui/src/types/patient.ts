@@ -1,16 +1,19 @@
+import type { TriageItem } from './triage';
+
 export interface Patient {
-  id: number | string;
+  id: string;
   name: string;
+  age: number;
+  gender: string;
   symptoms?: string;
-  status?: 'waiting' | 'in_progress' | 'completed';
-  age?: number;
-  gender?: string;
+  medicalHistory?: string;
+  status: 'waiting' | 'in_progress' | 'completed';
   contactNumber?: string;
   insuranceInfo?: string;
-  medicalHistory?: string;
-  allergies?: string[];
-  currentMedications?: string[];
+  allergies: string[];
+  currentMedications: string[];
   emergencyContact?: string;
-  triage?: import('./index').TriageItem;
-  created_at?: Date | string;
+  triage?: TriageItem;
+  created_at?: string;
 }
+  

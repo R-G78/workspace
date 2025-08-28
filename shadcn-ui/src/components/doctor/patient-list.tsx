@@ -1,15 +1,12 @@
 import { useState, useEffect } from "react";
-import { Patient, TriageItem } from "@/types";
+import type { Patient } from "@/types/patient";
+import type { TriageItem } from "@/types/triage";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, AlertTriangle, Clock, CheckCircle, ArrowRight, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { getPatients } from '@/lib/mock-data';
-
-
-
 
 interface PatientListProps {
   patients?: Patient[];
@@ -26,7 +23,11 @@ export function PatientList({ patients: initialPatients, onSelectPatient }: Pati
   const fetchPatients = async () => {
     try {
       setError(null);
-      const data = await getPatients();
+      const response = await fetch('/api/patients');
+      if (!response.ok) {
+        throw new Error('Failed to fetch patients');
+      }
+      const data = await response.json();
       setPatients(data);
     } catch (error) {
       setError('Failed to fetch patients');
@@ -91,10 +92,10 @@ export function PatientList({ patients: initialPatients, onSelectPatient }: Pati
     })
     .filter((patient) => {
       if (!searchQuery) return true;
-      const q = searchQuery.toLowerCase();
-      const name = (patient.name || "").toLowerCase();
-      const idStr = String(patient.id ?? "").toLowerCase();
-      return name.includes(q) || idStr.includes(q);
+      return (
+        patient.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        patient.id.toString().toLowerCase().includes(searchQuery.toLowerCase())
+      );
     });
 
   if (isLoading) return <div>Loading patients...</div>;

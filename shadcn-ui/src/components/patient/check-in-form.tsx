@@ -11,7 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { processNewItem } from "@/lib/tidb";
-import { Patient, TriageItem } from "@/types";
+import type { Patient } from "@/types/medical";
+import type { TriageItem } from "@/types/triage";
 import { Loader2 } from "lucide-react";
 
 const formSchema = z.object({
@@ -82,7 +83,7 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
         allergies,
         currentMedications,
         emergencyContact: values.emergencyContact,
-      } as Patient;
+      };
 
       // Create triage item
       const triageItem: Partial<TriageItem> = {
@@ -92,7 +93,7 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
         status: "new",
         category: "general", // Default category
         timestamp: new Date().toISOString(),
-        patientId: String(patient.id),
+        patientId: patient.id,
       };
 
       // Process through our agent workflow

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Patient, TriageItem, Doctor } from "@/types";
+import type { Patient } from "@/types/patient";
+import type { TriageItem } from "@/types/triage";
+import type { Doctor } from "@/types/doctor";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-type StatusType = TriageItem['status'];
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -21,9 +22,9 @@ interface PatientDetailProps {
 }
 
 export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDetailProps) {
-  const [status, setStatus] = useState<StatusType>(patient.triage?.status || "new");
-  const [assignedDoctor, setAssignedDoctor] = useState(patient.triage?.assignedDoctor || "unassigned");
-  const [room, setRoom] = useState(patient.triage?.room || "not_assigned");
+  const [status, setStatus] = useState<'new' | 'in_progress' | 'resolved' | 'closed'>(patient.triage?.status || "new");
+  const [assignedDoctor, setAssignedDoctor] = useState(patient.triage?.assignedDoctor || "");
+  const [room, setRoom] = useState(patient.triage?.room || "");
   const [note, setNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -34,22 +35,40 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
     try {
       const notes = patient.triage.notes || [];
       if (note) {
-        notes.push(`[${new Date().toLocaleString()}] ${note}`);
+        notes.push({
+          id: `note-${Date.now()}`,
+          content: note,
+          timestamp: new Date().toISOString(),
+          author: "Doctor", // TODO: Replace with actual doctor name
+          type: "observation"
+        });
       }
 
-      const updatedTriage = {
-        ...patient.triage,
-        status,
-        assignedDoctor,
-        room,
-        notes
-      };
+      // Update patient status via API
+      const response = await fetch(`/api/patients/${patient.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status,
+          triage: {
+            ...patient.triage,
+            assignedDoctor,
+            room,
+            notes
+          }
+        }),
+      });
 
-      // Update in database
-      await updateTriageItem(patient.triage.id, updatedTriage);
+      if (!response.ok) {
+        throw new Error('Failed to update patient');
+      }
+
+      const updatedPatient = await response.json();
       
       // Update UI
-      onUpdate(updatedTriage);
+      onUpdate(updatedPatient.triage);
       
       // Notify success
       toast.success("Patient information updated", {
@@ -358,9 +377,12 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
                 <div className="rounded-lg border p-3 max-h-56 overflow-auto">
                   {patient.triage?.notes && patient.triage.notes.length > 0 ? (
                     <div className="space-y-3">
-                      {patient.triage.notes.map((note, index) => (
-                        <div key={index} className="text-sm p-2 rounded bg-muted/50">
-                          {note}
+                      {patient.triage.notes.map((note) => (
+                        <div key={note.id} className="text-sm p-2 rounded bg-muted/50">
+                          <div className="text-xs text-muted-foreground mb-1">
+                            {new Date(note.timestamp).toLocaleString()} - {note.author} ({note.type})
+                          </div>
+                          {note.content}
                         </div>
                       ))}
                     </div>
@@ -389,8 +411,7 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
               <label htmlFor="status" className="text-xs">Status</label>
               <Select 
                 value={status} 
-                onValueChange={(value: StatusType) => setStatus(value)}
-              >
+                onValueChange={(value: 'new' | 'in_progress' | 'resolved' | 'closed') => setStatus(value)}>
                 <SelectTrigger id="status">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
@@ -410,7 +431,7 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
                   <SelectValue placeholder="Assign to" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  <SelectItem value="">Unassigned</SelectItem>
                   {doctors.map(doctor => (
                     <SelectItem key={doctor.id} value={doctor.id}>
                       Dr. {doctor.name} ({doctor.specialization})
@@ -427,7 +448,7 @@ export function PatientDetail({ patient, doctors, onClose, onUpdate }: PatientDe
                   <SelectValue placeholder="Room" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="not_assigned">Not assigned</SelectItem>
+                  <SelectItem value="">Not assigned</SelectItem>
                   <SelectItem value="A1">Room A1</SelectItem>
                   <SelectItem value="A2">Room A2</SelectItem>
                   <SelectItem value="B1">Room B1</SelectItem>

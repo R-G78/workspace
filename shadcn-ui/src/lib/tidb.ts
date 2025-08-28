@@ -1,628 +1,244 @@
-import { connect } from '@tidbcloud/serverless';
-import type { FullResult, Row } from '@tidbcloud/serverless';
-import type { Patient, Doctor, TriageItem } from '@/types';
-import { mockPatients, mockDoctors } from './mock-data';
+// TiDB Cloud connection and database utilities
+import mysql from 'mysql2/promise';
+import type { Pool, PoolConnection, RowDataPacket } from 'mysql2/promise';
+import { dbConfig } from '@/config/database';
+import type { Patient } from '@/types/medical';
+import type { Doctor } from '@/types/doctor';
+import type { TriageItem } from '@/types/triage';
 
-// Helper function to get rows from TiDB result
-function getRows<T>(result: FullResult | Row[]): T[] {
-  if (Array.isArray(result)) {
-    return result as T[];
+// Database class for centralized management
+class Database {
+  private static instance: Database;
+  private pool: Pool;
+
+  private constructor() {
+    this.pool = mysql.createPool(dbConfig);
   }
-  return (result as FullResult).rows as T[];
-}
 
-// Initialize TiDB Serverless client
-const db = connect({
-  url: process.env.TIDB_URL || '',
-  username: process.env.TIDB_USERNAME || '',
-  password: process.env.TIDB_PASSWORD || ''
-});
-
-// Schema definitions
-const SCHEMA = {
-  patients: `
-    CREATE TABLE IF NOT EXISTS patients (
-      id VARCHAR(255) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      age INT,
-      gender VARCHAR(50),
-      symptoms TEXT,
-      medical_history TEXT,
-      status VARCHAR(50),
-      contact_number VARCHAR(100),
-      insurance_info TEXT,
-      allergies JSON,
-      current_medications JSON,
-      emergency_contact TEXT,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )
-  `,
-  triage: `
-    CREATE TABLE IF NOT EXISTS triage_items (
-      id VARCHAR(255) PRIMARY KEY,
-      patient_id VARCHAR(255),
-      title VARCHAR(255),
-      description TEXT,
-      priority VARCHAR(50),
-      status VARCHAR(50),
-      category VARCHAR(100),
-      timestamp TIMESTAMP,
-      wait_time INT,
-      assigned_doctor VARCHAR(255),
-      vital_signs JSON,
-      vector JSON,
-      FOREIGN KEY (patient_id) REFERENCES patients(id),
-      FOREIGN KEY (assigned_doctor) REFERENCES doctors(id)
-    )
-  `,
-  doctors: `
-    CREATE TABLE IF NOT EXISTS doctors (
-      id VARCHAR(255) PRIMARY KEY,
-      name VARCHAR(255) NOT NULL,
-      specialization VARCHAR(100),
-      department VARCHAR(100),
-      status VARCHAR(50),
-      current_patients INT DEFAULT 0,
-      schedule JSON
-    )
-  `
-};
-
-// Initialize database tables
-export async function initializeDatabase() {
-  try {
-    for (const [table, schema] of Object.entries(SCHEMA)) {
-      await db.execute(schema);
-      console.log(`Created table: ${table}`);
+  public static getInstance(): Database {
+    if (!Database.instance) {
+      Database.instance = new Database();
     }
-
-    // Seed initial data if tables are empty
-    const doctorsCount = await db.execute('SELECT COUNT(*) as count FROM doctors');
-    const rows = getRows<{count: number}>(doctorsCount);
-    if (rows[0].count === 0) {
-      await seedInitialData();
-    }
-
-    console.log('Database initialized successfully');
-  } catch (error) {
-    console.error('Failed to initialize database:', error);
-    console.log('Falling back to mock data');
-  }
-}
-
-async function seedInitialData() {
-  // Seed doctors
-  for (const doctor of mockDoctors) {
-    await db.execute(
-      `INSERT INTO doctors (id, name, specialization, department, status, schedule)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [
-        doctor.id,
-        doctor.name,
-        doctor.specialization,
-        doctor.department,
-        doctor.status,
-        JSON.stringify(doctor.schedule)
-      ]
-    );
+    return Database.instance;
   }
 
-  // Seed initial patients
-  for (const patient of mockPatients) {
-    await db.execute(
-      `INSERT INTO patients (
-        id, name, age, gender, symptoms, medical_history,
-        status, contact_number, insurance_info, allergies,
-        current_medications, emergency_contact
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        patient.id,
-        patient.name,
-        patient.age,
-        patient.gender,
-        patient.symptoms,
-        patient.medicalHistory,
-        patient.status,
-        patient.contactNumber,
-        patient.insuranceInfo,
-        JSON.stringify(patient.allergies),
-        JSON.stringify(patient.currentMedications),
-        patient.emergencyContact
-      ]
-    );
-
-    // Add corresponding triage item if exists
-    if (patient.triage) {
-      await db.execute(
-        `INSERT INTO triage_items (
-          id, patient_id, title, description, priority,
-          status, category, timestamp, wait_time, assigned_doctor
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          patient.triage.id,
-          patient.id,
-          patient.triage.title,
-          patient.triage.description,
-          patient.triage.priority,
-          patient.triage.status,
-          patient.triage.category,
-          patient.triage.timestamp,
-          patient.triage.waitTime,
-          patient.triage.assignedDoctor
-        ]
-      );
-    }
+  public async getConnection(): Promise<PoolConnection> {
+    return await this.pool.getConnection();
   }
-}
 
-// Data Access Layer
-export async function getPatients(): Promise<Patient[]> {
-  try {
-    const result = await db.execute(
-      `SELECT p.*, t.* FROM patients p 
-       LEFT JOIN triage_items t ON p.id = t.patient_id`
-    );
-
-    const rows = getRows<any>(result);
-    return rows.map(row => ({
-      id: row.id,
-      name: row.name,
-      age: row.age,
-      gender: row.gender,
-      symptoms: row.symptoms,
-      medicalHistory: row.medical_history,
-      status: row.status,
-      contactNumber: row.contact_number,
-      insuranceInfo: row.insurance_info,
-      allergies: JSON.parse(row.allergies || '[]'),
-      currentMedications: JSON.parse(row.current_medications || '[]'),
-      emergencyContact: row.emergency_contact,
-      created_at: row.created_at,
-      triage: row.patient_id ? {
-        id: row.triage_id,
-        title: row.title,
-        description: row.description,
-        priority: row.priority,
-        status: row.triage_status,
-        category: row.category,
-        timestamp: row.timestamp,
-        waitTime: row.wait_time,
-        assignedDoctor: row.assigned_doctor,
-        vitalSigns: JSON.parse(row.vital_signs || '{}'),
-        vector: JSON.parse(row.vector || '[]')
-      } : undefined
-    }));
-  } catch (error) {
-    console.error('Failed to fetch patients:', error);
-    return mockPatients;
-  }
-}
-
-export async function createPatient(patient: Partial<Patient>): Promise<Patient> {
-  try {
-    // Begin transaction
-    await db.execute('START TRANSACTION');
-
+  public async query<T extends RowDataPacket[]>(sql: string, values?: any[]): Promise<T> {
+    const connection = await this.getConnection();
     try {
-      // Insert patient
-      const patientResult = await db.execute(
-        `INSERT INTO patients (
-          id, name, age, gender, symptoms, medical_history,
-          status, contact_number, insurance_info, allergies,
-          current_medications, emergency_contact
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING *`,
-        [
-          `P-${Date.now()}`,
-          patient.name,
-          patient.age,
-          patient.gender,
-          patient.symptoms,
-          patient.medicalHistory,
-          patient.status || 'waiting',
-          patient.contactNumber,
-          patient.insuranceInfo,
-          JSON.stringify(patient.allergies || []),
-          JSON.stringify(patient.currentMedications || []),
-          patient.emergencyContact
-        ]
-      );
-
-      const rows = getRows<any>(patientResult);
-      const newPatient = rows[0];
-
-      // If triage data exists, insert it
-      if (patient.triage) {
-        await db.execute(
-          `INSERT INTO triage_items (
-            id, patient_id, title, description, priority,
-            status, category, timestamp, wait_time, assigned_doctor
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [
-            `T-${Date.now()}`,
-            newPatient.id,
-            patient.triage.title,
-            patient.triage.description,
-            patient.triage.priority,
-            patient.triage.status || 'new',
-            patient.triage.category,
-            patient.triage.timestamp || new Date().toISOString(),
-            patient.triage.waitTime,
-            patient.triage.assignedDoctor
-          ]
-        );
-      }
-
-      await db.execute('COMMIT');
-
-      return {
-        ...newPatient,
-        allergies: JSON.parse(newPatient.allergies || '[]'),
-        currentMedications: JSON.parse(newPatient.current_medications || '[]')
-      };
-    } catch (error) {
-      await db.execute('ROLLBACK');
-      throw error;
+      const [rows] = await connection.query<T>(sql, values);
+      return rows;
+    } finally {
+      connection.release();
     }
-  } catch (error) {
-    console.error('Failed to create patient:', error);
-    // In development, fall back to mock data
-    const mockPatient = {
-      ...patient,
-      id: `P-${Date.now()}`,
-      status: 'waiting'
-    } as Patient;
-    mockPatients.push(mockPatient);
-    return mockPatient;
   }
 }
 
-export async function getDoctors(): Promise<Doctor[]> {
-  try {
-    const result = await db.execute('SELECT * FROM doctors WHERE status = ?', ['active']);
-    const rows = getRows<any>(result);
-    return rows.map(row => ({
-      ...row,
-      schedule: JSON.parse(row.schedule || '[]')
-    }));
-  } catch (error) {
-    console.error('Failed to fetch doctors:', error);
-    return mockDoctors;
-  }
+// Export singleton instance
+export const db = Database.getInstance();
+
+// Placeholder functions for TiDB operations
+
+export async function storeTriageItem(item: TriageItem): Promise<string> {
+  // In a real implementation, this would store the item in TiDB
+  console.log("Storing triage item:", item);
+  return "success";
 }
 
-export async function updatePatient(id: string, updates: Partial<Patient>): Promise<Patient> {
-  try {
-    const result = await db.execute(
-      `UPDATE patients 
-       SET name = COALESCE(?, name),
-           age = COALESCE(?, age),
-           gender = COALESCE(?, gender),
-           symptoms = COALESCE(?, symptoms),
-           medical_history = COALESCE(?, medical_history),
-           status = COALESCE(?, status),
-           contact_number = COALESCE(?, contact_number),
-           insurance_info = COALESCE(?, insurance_info),
-           allergies = COALESCE(?, allergies),
-           current_medications = COALESCE(?, current_medications),
-           emergency_contact = COALESCE(?, emergency_contact)
-       WHERE id = ?
-       RETURNING *`,
-      [
-        updates.name,
-        updates.age,
-        updates.gender,
-        updates.symptoms,
-        updates.medicalHistory,
-        updates.status,
-        updates.contactNumber,
-        updates.insuranceInfo,
-        updates.allergies ? JSON.stringify(updates.allergies) : null,
-        updates.currentMedications ? JSON.stringify(updates.currentMedications) : null,
-        updates.emergencyContact,
-        id
-      ]
-    );
-
-    return {
-      ...getRows<any>(result)[0],
-      allergies: JSON.parse(getRows<any>(result)[0].allergies || '[]'),
-      currentMedications: JSON.parse(getRows<any>(result)[0].current_medications || '[]')
-    };
-  } catch (error) {
-    console.error('Failed to update patient:', error);
-    // Update mock data in development
-    const index = mockPatients.findIndex(p => p.id === id);
-    if (index !== -1) {
-      mockPatients[index] = { ...mockPatients[index], ...updates };
-      return mockPatients[index];
-    }
-    throw error;
-  }
-}
-
-export async function getTriageItems(): Promise<TriageItem[]> {
-  try {
-    const result = await db.execute(`
-      SELECT t.*, p.name as patient_name 
-      FROM triage_items t
-      JOIN patients p ON t.patient_id = p.id
-      ORDER BY 
-        CASE 
-          WHEN t.status = 'new' THEN 1
-          WHEN t.status = 'in_progress' THEN 2
-          ELSE 3
-        END,
-        CASE t.priority
-          WHEN 'high' THEN 1
-          WHEN 'medium' THEN 2
-          WHEN 'low' THEN 3
-        END,
-        t.timestamp DESC
-    `);
-
-    const rows = getRows<any>(result);
-    return rows.map(row => ({
-      id: row.id,
-      patientId: row.patient_id,
-      patientName: row.patient_name,
-      title: row.title,
-      description: row.description,
-      priority: row.priority,
-      status: row.status,
-      category: row.category,
-      timestamp: row.timestamp,
-      waitTime: row.wait_time,
-      assignedDoctor: row.assigned_doctor,
-      vitalSigns: JSON.parse(row.vital_signs || '{}'),
-      vector: JSON.parse(row.vector || '[]')
-    }));
-  } catch (error) {
-    console.error('Failed to fetch triage items:', error);
-    // In development, fall back to mock data
-    return mockPatients
-      .filter(p => p.triage)
-      .map(p => ({
-        ...p.triage!,
-        patientName: p.name
-      }))
-      .sort((a, b) => {
-        // Sort by status (new → in_progress → completed)
-        const statusOrder = { new: 0, in_progress: 1, completed: 2 };
-        const statusDiff = (statusOrder[a.status as keyof typeof statusOrder] || 0) - 
-                         (statusOrder[b.status as keyof typeof statusOrder] || 0);
-        if (statusDiff !== 0) return statusDiff;
-
-        // Then by priority (high → medium → low)
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        const priorityDiff = (priorityOrder[a.priority as keyof typeof priorityOrder] || 0) - 
-                           (priorityOrder[b.priority as keyof typeof priorityOrder] || 0);
-        if (priorityDiff !== 0) return priorityDiff;
-
-        // Finally by timestamp (newest first)
-        return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-      });
-  }
-}
-
-export async function searchTriageItems(query: string, filters?: {
-  priority?: string;
-  status?: string;
-  category?: string;
-  startDate?: string;
-  endDate?: string;
-}): Promise<TriageItem[]> {
-  try {
-    let sql = `
-      SELECT t.*, p.name as patient_name 
-      FROM triage_items t
-      JOIN patients p ON t.patient_id = p.id
-      WHERE (
-        LOWER(t.title) LIKE ? OR
-        LOWER(t.description) LIKE ? OR
-        LOWER(p.name) LIKE ?
-      )
-    `;
-    
-    const params: any[] = Array(3).fill(`%${query.toLowerCase()}%`);
-
-    if (filters) {
-      if (filters.priority) {
-        sql += ' AND t.priority = ?';
-        params.push(filters.priority);
-      }
-      if (filters.status) {
-        sql += ' AND t.status = ?';
-        params.push(filters.status);
-      }
-      if (filters.category) {
-        sql += ' AND t.category = ?';
-        params.push(filters.category);
-      }
-      if (filters.startDate) {
-        sql += ' AND t.timestamp >= ?';
-        params.push(filters.startDate);
-      }
-      if (filters.endDate) {
-        sql += ' AND t.timestamp <= ?';
-        params.push(filters.endDate);
-      }
-    }
-
-    sql += ' ORDER BY t.timestamp DESC';
-
-    const result = await db.execute(sql, params);
-    const rows = getRows<any>(result);
-
-    return rows.map(row => ({
-      id: row.id,
-      patientId: row.patient_id,
-      patientName: row.patient_name,
-      title: row.title,
-      description: row.description,
-      priority: row.priority,
-      status: row.status,
-      category: row.category,
-      timestamp: row.timestamp,
-      waitTime: row.wait_time,
-      assignedDoctor: row.assigned_doctor,
-      vitalSigns: JSON.parse(row.vital_signs || '{}'),
-      vector: JSON.parse(row.vector || '[]')
-    }));
-  } catch (error) {
-    console.error('Failed to search triage items:', error);
-    // In development, fall back to mock data with filtering
-    return mockPatients
-      .filter(p => p.triage)
-      .map(p => p.triage!)
-      .filter(t => {
-        const matchesQuery = query.toLowerCase().split(' ').some(term =>
-          t.title.toLowerCase().includes(term) ||
-          t.description.toLowerCase().includes(term)
-        );
-
-        if (!matchesQuery) return false;
-        if (!filters) return true;
-
-        return (!filters.priority || t.priority === filters.priority) &&
-               (!filters.status || t.status === filters.status) &&
-               (!filters.category || t.category === filters.category) &&
-               (!filters.startDate || t.timestamp >= filters.startDate) &&
-               (!filters.endDate || t.timestamp <= filters.endDate);
-      });
-  }
-}
-
-export async function processNewItem(item: Partial<TriageItem> & { patientId: string }): Promise<TriageItem> {
-  try {
-    // Begin transaction
-    await db.execute('START TRANSACTION');
-
-    try {
-      // Create new triage item
-      const result = await db.execute(
-        `INSERT INTO triage_items (
-          id, patient_id, title, description, priority,
-          status, category, timestamp, wait_time, assigned_doctor,
-          vital_signs, vector
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        RETURNING *`,
-        [
-          `T-${Date.now()}`,
-          item.patientId,
-          item.title,
-          item.description,
-          item.priority || 'medium',
-          item.status || 'new',
-          item.category || 'general',
-          item.timestamp || new Date().toISOString(),
-          item.waitTime || 0,
-          item.assignedDoctor,
-          item.vitalSigns ? JSON.stringify(item.vitalSigns) : '{}',
-          item.vector ? JSON.stringify(item.vector) : '[]'
-        ]
-      );
-
-      // Update patient status
-      await db.execute(
-        `UPDATE patients 
-         SET status = 'in_triage'
-         WHERE id = ?`,
-        [item.patientId]
-      );
-
-      await db.execute('COMMIT');
-
-      const rows = getRows<any>(result);
-      return {
-        ...rows[0],
-        vitalSigns: JSON.parse(rows[0].vital_signs || '{}'),
-        vector: JSON.parse(rows[0].vector || '[]')
-      };
-    } catch (error) {
-      await db.execute('ROLLBACK');
-      throw error;
-    }
-  } catch (error) {
-    console.error('Failed to process new triage item:', error);
-    // In development, fall back to mock data
-    const mockItem: TriageItem = {
-      id: `T-${Date.now()}`,
-      patientId: item.patientId,
-      title: item.title || '',
-      description: item.description || '',
-      priority: item.priority || 'medium',
-      status: 'new',
-      category: item.category || 'general',
+export async function searchTriageItems(query: string, useVector: boolean = true): Promise<TriageItem[]> {
+  // In a real implementation, this would search items in TiDB using vector search
+  console.log("Searching for:", query, "Using vector:", useVector);
+  
+  // Return mock data for now
+  return [
+    {
+      id: "1",
+      title: "System outage in production",
+      description: "The main production server is not responding to requests",
+      priority: "critical",
+      status: "new",
+      category: "infrastructure",
       timestamp: new Date().toISOString(),
-      waitTime: item.waitTime || 0,
-      assignedDoctor: item.assignedDoctor,
-      vitalSigns: item.vitalSigns || {},
-      vector: item.vector || []
-    };
-
-    // Update mock patient data
-    const patient = mockPatients.find(p => p.id === item.patientId);
-    if (patient) {
-      patient.status = 'in_progress';
-      patient.triage = mockItem;
-    }
-
-    return mockItem;
-  }
+    },
+    {
+      id: "2",
+      title: "User authentication failure",
+      description: "Multiple users reporting inability to log in",
+      priority: "high",
+      status: "in_progress",
+      category: "security",
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+    },
+  ] as TriageItem[];
 }
 
-export async function updateTriageItem(id: string, updates: Partial<TriageItem>): Promise<TriageItem> {
+export async function getTriageItems(
+  status?: string, 
+  priority?: string,
+  limit: number = 10
+): Promise<TriageItem[]> {
+  // In a real implementation, this would fetch items from TiDB
+  console.log("Getting triage items with status:", status, "priority:", priority);
+  
+  // Return mock data for now
+  return [
+    {
+      id: "1",
+      title: "System outage in production",
+      description: "The main production server is not responding to requests",
+      priority: "critical",
+      status: "new",
+      category: "infrastructure",
+      timestamp: new Date().toISOString(),
+    },
+    {
+      id: "2",
+      title: "User authentication failure",
+      description: "Multiple users reporting inability to log in",
+      priority: "high",
+      status: "in_progress",
+      category: "security",
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+    },
+    {
+      id: "3",
+      title: "Database connection timeout",
+      description: "Applications experiencing slow response due to DB timeouts",
+      priority: "medium",
+      status: "new",
+      category: "database",
+      timestamp: new Date(Date.now() - 7200000).toISOString(),
+    },
+    {
+      id: "4",
+      title: "Missing file in deployment",
+      description: "Configuration file not found in latest deployment",
+      priority: "low",
+      status: "resolved",
+      category: "deployment",
+      timestamp: new Date(Date.now() - 86400000).toISOString(),
+    },
+  ] as TriageItem[];
+}
+
+export async function updateTriageItem(id: string, updates: Partial<TriageItem>): Promise<boolean> {
+  // In a real implementation, this would update an item in TiDB
+  console.log("Updating triage item:", id, "with:", updates);
+  return true;
+}
+
+export async function generateEmbedding(text: string): Promise<number[]> {
+  // In a real implementation, this would call an embedding model API
+  // For now, we'll return a mock embedding
+  console.log("Generating embedding for:", text);
+  return Array(384).fill(0).map(() => Math.random() - 0.5);
+}
+
+export async function processNewItem(item: TriageItem): Promise<TriageItem> {
+  // This function would implement the agent workflow:
+  // 1. Generate embeddings
+  // 2. Find similar cases
+  // 3. Suggest priority and category based on similar cases
+  // 4. Store in TiDB
+  
+  console.log("Processing new item:", item);
+  
+  // Generate embeddings (mock)
+  const embedding = await generateEmbedding(item.title + " " + item.description);
+  
+  // Find similar cases (mock)
+  const similarCases = await searchTriageItems(item.title, true);
+  
+  // For demo purposes, we'll just assign a random priority if one isn't set
+  if (!item.priority) {
+    const priorities: Array<'low' | 'medium' | 'high'> = ['low', 'medium', 'high'];
+    item.priority = priorities[Math.floor(Math.random() * priorities.length)];
+  }
+  
+  // In a real implementation, we would use the similar cases to make suggestions
+  
+  return {
+    ...item,
+    vector: embedding,
+    status: item.status || 'new',
+    timestamp: item.timestamp || new Date().toISOString(),
+  };
+}
+
+export async function createPatient(data: Omit<Patient, 'id' | 'created_at'>) {
   try {
-    const result = await db.execute(
-      `UPDATE triage_items 
-       SET title = COALESCE(?, title),
-           description = COALESCE(?, description),
-           priority = COALESCE(?, priority),
-           status = COALESCE(?, status),
-           category = COALESCE(?, category),
-           wait_time = COALESCE(?, wait_time),
-           assigned_doctor = COALESCE(?, assigned_doctor),
-           vital_signs = COALESCE(?, vital_signs),
-           vector = COALESCE(?, vector)
-       WHERE id = ?
-       RETURNING *`,
-      [
-        updates.title,
-        updates.description,
-        updates.priority,
-        updates.status,
-        updates.category,
-        updates.waitTime,
-        updates.assignedDoctor,
-        updates.vitalSigns ? JSON.stringify(updates.vitalSigns) : null,
-        updates.vector ? JSON.stringify(updates.vector) : null,
-        id
-      ]
+    const result = await db.query<RowDataPacket[]>(
+      'INSERT INTO patients (name, symptoms, status) VALUES (?, ?, ?)',
+      [data.name, data.symptoms, data.status]
     );
-
-    const rows = getRows<any>(result);
-    if (rows.length === 0) {
-      throw new Error('Triage item not found');
-    }
-
-    return {
-      ...rows[0],
-      vitalSigns: JSON.parse(rows[0].vital_signs || '{}'),
-      vector: JSON.parse(rows[0].vector || '[]')
-    };
+    return result[0];
   } catch (error) {
-    console.error('Failed to update triage item:', error);
-    // Update mock data in development
-    const patientWithTriage = mockPatients.find(p => p.triage?.id === id);
-    if (patientWithTriage?.triage) {
-      patientWithTriage.triage = { ...patientWithTriage.triage, ...updates };
-      return patientWithTriage.triage;
-    }
+    console.error('Error creating patient:', error);
     throw error;
   }
 }
 
-// Initialize database on import
-initializeDatabase().catch(console.error);
+interface DBPatient extends Patient, RowDataPacket {}
+
+export async function getPatients() {
+  try {
+    const patients = await db.query<DBPatient[]>(
+      'SELECT * FROM patients ORDER BY created_at DESC'
+    );
+    return patients;
+  } catch (error) {
+    console.error('Error getting patients:', error);
+    throw error;
+  }
+}
+
+export async function updatePatientStatus(id: number, updates: Partial<Patient>) {
+  try {
+    // Start building the update query
+    const setClauses: string[] = [];
+    const values: any[] = [];
+
+    // Add each updateable field
+    if (updates.status) {
+      setClauses.push('status = ?');
+      values.push(updates.status);
+    }
+    
+    if (updates.triage) {
+      setClauses.push('triage = ?');
+      values.push(JSON.stringify(updates.triage));
+    }
+
+    // Add any other fields that need updating
+    // e.g., medicalHistory, currentMedications, etc.
+
+    if (setClauses.length === 0) {
+      throw new Error('No valid fields to update');
+    }
+
+    // Add the ID to values array
+    values.push(id);
+
+    const query = `
+      UPDATE patients 
+      SET ${setClauses.join(', ')} 
+      WHERE id = ?
+    `;
+
+    const result = await db.query<RowDataPacket[]>(query, values);
+    
+    // Fetch and return the updated record
+    const [updated] = await db.query<DBPatient[]>(
+      'SELECT * FROM patients WHERE id = ?',
+      [id]
+    );
+    
+    return updated[0];
+  } catch (error) {
+    console.error('Error updating patient status:', error);
+    throw error;
+  }
+}

@@ -3,13 +3,15 @@ import { MainLayout } from "@/components/layout/main-layout";
 import { Button } from "@/components/ui/button";
 import { PatientList } from "@/components/doctor/patient-list";
 import { PatientDetail } from "@/components/doctor/patient-detail";
-import { TriageItem, Patient, Doctor, TriageStats } from "@/types";
+import type { TriageItem } from "@/types/triage";
+import type { Patient } from "@/types/patient";
+import type { Doctor } from "@/types/doctor";
+import type { TriageStats } from "@/types/stats";
 import { TriageStatsCards } from "@/components/dashboard/triage-stats";
-import { getTriageItems } from "@/lib/tidb";
 import { RefreshCw, Plus } from "lucide-react";
 
 // Mock data
-const mockPatients: (Patient & { triage?: TriageItem })[] = [
+const mockPatients: Patient[] = [
   {
     id: "P-001",
     name: "John Smith",
@@ -19,11 +21,13 @@ const mockPatients: (Patient & { triage?: TriageItem })[] = [
     allergies: ["Penicillin", "Peanuts"],
     currentMedications: ["Metformin", "Lisinopril"],
     contactNumber: "555-123-4567",
+    status: "waiting",
     triage: {
       id: "T-001",
+      patientId: "P-001",
       title: "Chest Pain and Shortness of Breath",
       description: "Patient reports sudden onset of chest pain radiating to left arm, along with difficulty breathing for the past hour. History of hypertension.",
-      priority: "critical",
+      priority: "high",
       status: "new",
       category: "cardiology",
       timestamp: new Date().toISOString(),
@@ -35,7 +39,9 @@ const mockPatients: (Patient & { triage?: TriageItem })[] = [
         respiratoryRate: 24,
         oxygenSaturation: 92
       },
+      vector: [], // This will be generated on the server
       symptoms: ["Chest pain", "Shortness of breath", "Sweating", "Anxiety"],
+      notes: []
     }
   },
   {
@@ -161,32 +167,48 @@ const mockDoctors: Doctor[] = [
     name: "Elizabeth Taylor",
     specialization: "Emergency Medicine",
     department: "Emergency",
-    availability: "available",
-    email: "e.taylor@hospital.org"
+    status: "active",
+    schedule: [
+      { day: "Monday", startTime: "08:00", endTime: "17:00" },
+      { day: "Tuesday", startTime: "08:00", endTime: "17:00" },
+      { day: "Wednesday", startTime: "08:00", endTime: "17:00" }
+    ]
   },
   {
     id: "D-002",
     name: "James Anderson",
     specialization: "Orthopedics",
     department: "Emergency",
-    availability: "busy",
-    email: "j.anderson@hospital.org"
+    status: "active",
+    schedule: [
+      { day: "Monday", startTime: "09:00", endTime: "18:00" },
+      { day: "Thursday", startTime: "09:00", endTime: "18:00" },
+      { day: "Friday", startTime: "09:00", endTime: "18:00" }
+    ]
   },
   {
     id: "D-003",
     name: "Maria Rodriguez",
     specialization: "Cardiology",
     department: "Emergency",
-    availability: "available",
-    email: "m.rodriguez@hospital.org"
+    status: "active",
+    schedule: [
+      { day: "Tuesday", startTime: "08:00", endTime: "17:00" },
+      { day: "Wednesday", startTime: "08:00", endTime: "17:00" },
+      { day: "Thursday", startTime: "08:00", endTime: "17:00" }
+    ]
   },
   {
     id: "D-004",
     name: "David Kim",
     specialization: "Neurology",
     department: "Emergency",
-    availability: "off-duty",
-    email: "d.kim@hospital.org"
+    status: "on_leave",
+    schedule: [
+      { day: "Monday", startTime: "10:00", endTime: "19:00" },
+      { day: "Wednesday", startTime: "10:00", endTime: "19:00" },
+      { day: "Friday", startTime: "10:00", endTime: "19:00" }
+    ]
   }
 ];
 
@@ -203,14 +225,9 @@ export default function DoctorDashboard() {
     resolved: 0
   });
 
-  // Load data and calculate stats
-  useEffect(() => {
-    calculateStats(patients);
-  }, [patients]);
-
-  const calculateStats = (patients: (Patient & { triage?: TriageItem })[]) => {
+  const calculateStats = (items: Patient[]) => {
     const stats: TriageStats = {
-      total: patients.length,
+      total: items.length,
       critical: 0,
       high: 0,
       medium: 0,
@@ -218,7 +235,7 @@ export default function DoctorDashboard() {
       resolved: 0
     };
 
-    patients.forEach(patient => {
+    items.forEach((patient) => {
       if (patient.triage) {
         if (patient.triage.status === "resolved") {
           stats.resolved++;
@@ -244,6 +261,28 @@ export default function DoctorDashboard() {
     setStats(stats);
   };
 
+  // Fetch data and calculate stats
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      try {
+        const response = await fetch('/api/triage');
+        if (!response.ok) {
+          throw new Error('Failed to fetch triage items');
+        }
+        const items = await response.json();
+        setPatients(items);
+        calculateStats(items);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
   const handlePatientSelect = (patient: Patient & { triage?: TriageItem }) => {
     setSelectedPatient(patient);
   };
@@ -263,12 +302,21 @@ export default function DoctorDashboard() {
     }
   };
 
-  const refreshPatients = () => {
+  const refreshPatients = async () => {
     setIsLoading(true);
-    // In a real app, we would fetch data from the API here
-    setTimeout(() => {
+    try {
+      const response = await fetch('/api/triage');
+      if (!response.ok) {
+        throw new Error('Failed to fetch triage items');
+      }
+      const items = await response.json();
+      setPatients(items);
+      calculateStats(items);
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   };
 
   return (

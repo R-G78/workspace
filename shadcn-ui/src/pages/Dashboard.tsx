@@ -5,7 +5,6 @@ import { TriageList } from "@/components/dashboard/triage-list";
 import { IngestForm } from "@/components/dashboard/ingest-form";
 import { DataSources } from "@/components/dashboard/data-sources";
 import { SearchBar } from "@/components/dashboard/search";
-import { getTriageItems } from "@/lib/tidb";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/use-toast";
@@ -67,7 +66,11 @@ export default function Dashboard() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const items = await getTriageItems();
+      const response = await fetch('/api/triage');
+      if (!response.ok) {
+        throw new Error('Failed to fetch triage items');
+      }
+      const items = await response.json();
       setTriageItems(items);
     } catch (error) {
       console.error("Failed to load data:", error);

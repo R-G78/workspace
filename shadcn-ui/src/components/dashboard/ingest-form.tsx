@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { processNewItem } from "@/lib/tidb";
+
 import { TriageItem } from "@/types";
 import { Loader2 } from "lucide-react";
 
@@ -39,14 +39,26 @@ export function IngestForm({ onItemAdded }: IngestFormProps) {
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true);
     try {
-      // Create new triage item
-      const newItem: Partial<TriageItem> = {
-        ...values,
-        status: "new",
-      };
+      // Create new triage item through API
+      const response = await fetch('/api/triage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...values,
+          status: "new",
+          patientId: "temp", // This should be replaced with actual patient selection
+          symptoms: values.description.split(',').map(s => s.trim()),
+          priority: values.priority || "medium"
+        })
+      });
 
-      // Process through our agent workflow
-      const processedItem = await processNewItem(newItem as TriageItem);
+      if (!response.ok) {
+        throw new Error('Failed to create triage item');
+      }
+
+      const processedItem = await response.json();
       
       // Notify parent component
       onItemAdded(processedItem);

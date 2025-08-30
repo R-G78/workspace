@@ -22,4 +22,12 @@ export default defineConfig(({ mode }) => ({
   define: {
     "process.env": process.env,
   },
+  server: {
+    proxy: {
+      '/api': {
+  target: process.env.VITE_DEV_API_URL || 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
 }));

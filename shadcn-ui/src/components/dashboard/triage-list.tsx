@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TriageItem } from "@/types";
-import { updateTriageItem } from "@/lib/tidb";
+
 import { AlertCircle, AlertTriangle, Clock, CheckCircle, ArrowRight } from "lucide-react";
 
 interface TriageListProps {
@@ -31,11 +31,20 @@ export function TriageList({ items, onItemUpdate }: TriageListProps) {
   const handleStatusChange = async (item: TriageItem, newStatus: "new" | "in_progress" | "resolved" | "closed") => {
     setUpdating(item.id);
     try {
-      await updateTriageItem(item.id, { status: newStatus });
-      onItemUpdate({
-        ...item,
-        status: newStatus
+      const response = await fetch(`/api/triage/${item.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus })
       });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update status');
+      }
+      
+      const updatedItem = await response.json();
+      onItemUpdate(updatedItem);
     } catch (error) {
       console.error("Failed to update status:", error);
     } finally {
@@ -116,7 +125,7 @@ export function TriageList({ items, onItemUpdate }: TriageListProps) {
               <Select
                 disabled={updating === item.id}
                 defaultValue={item.status}
-                onValueChange={(value) => handleStatusChange(item, value)}
+                onValueChange={(value: "new" | "in_progress" | "resolved" | "closed") => handleStatusChange(item, value)}
               >
                 <SelectTrigger className="h-7 w-[140px]">
                   <SelectValue placeholder="Select" />

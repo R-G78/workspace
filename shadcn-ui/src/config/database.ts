@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import mysql, { Pool } from 'mysql2/promise';
 
 export const dbConfig = {
   host: process.env.TIDB_HOST || '',
@@ -8,10 +8,21 @@ export const dbConfig = {
   database: process.env.TIDB_DATABASE || 'test',
   ssl: {
     minVersion: 'TLSv1.2',
-    rejectUnauthorized: true
-  }
+    rejectUnauthorized: true,
+  },
 };
 
-const pool = mysql.createPool(dbConfig);
+declare global {
+  // eslint-disable-next-line no-var
+  var __mysqlPoolConfig: Pool | undefined
+}
 
-export default pool;
+const createPool = () => mysql.createPool(dbConfig as any)
+
+export const getPool = () => {
+  const pool = global.__mysqlPoolConfig || createPool()
+  if (process.env.NODE_ENV !== 'production') global.__mysqlPoolConfig = pool
+  return pool
+}
+
+export default getPool()

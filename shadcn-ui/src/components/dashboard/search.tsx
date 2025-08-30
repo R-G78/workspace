@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { searchTriageItems } from "@/lib/tidb";
+
 import { TriageItem } from "@/types";
 import { Search, Loader2 } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
@@ -22,7 +22,11 @@ export function SearchBar({ onSearchResults }: SearchBarProps) {
     
     setIsLoading(true);
     try {
-      const results = await searchTriageItems(query, useVectorSearch);
+      const response = await fetch(`/api/triage/search?query=${encodeURIComponent(query)}`);
+      if (!response.ok) {
+        throw new Error('Search failed');
+      }
+      const results = await response.json();
       onSearchResults(results);
     } catch (error) {
       console.error("Search failed:", error);

@@ -10,7 +10,6 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { processNewItem } from "@/lib/tidb";
 import type { Patient } from "@/types/medical";
 import type { TriageItem } from "@/types/triage";
 import { Loader2 } from "lucide-react";
@@ -72,32 +71,52 @@ export function CheckInForm({ onCheckInComplete }: CheckInFormProps) {
         : [];
 
       // Create patient record
-      const patient: Patient = {
-        id: `P-${Date.now().toString().slice(-6)}`, // Generate a simple ID
-        name: values.name,
-        age: parseInt(values.age),
-        gender: values.gender,
-        contactNumber: values.contactNumber,
-        insuranceInfo: values.insuranceInfo,
-        medicalHistory: values.medicalHistory,
-        allergies,
-        currentMedications,
-        emergencyContact: values.emergencyContact,
-      };
+      const patientResponse = await fetch('/api/patients', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: values.name,
+          age: parseInt(values.age),
+          gender: values.gender,
+          contactNumber: values.contactNumber,
+          insuranceInfo: values.insuranceInfo,
+          medicalHistory: values.medicalHistory,
+          allergies,
+          currentMedications,
+          emergencyContact: values.emergencyContact,
+        })
+      });
+
+      if (!patientResponse.ok) {
+        throw new Error('Failed to create patient record');
+      }
+
+      const patient = await patientResponse.json();
 
       // Create triage item
-      const triageItem: Partial<TriageItem> = {
-        id: `T-${Date.now().toString().slice(-6)}`, // Generate a simple ID
-        title: values.title,
-        description: values.description,
-        status: "new",
-        category: "general", // Default category
-        timestamp: new Date().toISOString(),
-        patientId: patient.id,
-      };
+      const triageResponse = await fetch('/api/triage', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title: values.title,
+          description: values.description,
+          status: "new",
+          category: "general",
+          patientId: patient.id,
+          symptoms: values.description.split(',').map(s => s.trim()),
+          priority: "medium" // Default priority, will be updated by AI
+        })
+      });
 
-      // Process through our agent workflow
-      const processedItem = await processNewItem(triageItem as TriageItem);
+      if (!triageResponse.ok) {
+        throw new Error('Failed to create triage record');
+      }
+
+      const processedItem = await triageResponse.json();
       
       // In a real app, we would save the patient record to the database here
       // const connection = await pool.getConnection();

@@ -1,5 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { searchTriageItems } from '@/lib/tidb';
+import prisma from '@/lib/prisma';
 
 export default async function handler(
   req: NextApiRequest,
@@ -12,7 +12,20 @@ export default async function handler(
   }
 
   try {
-    const results = await searchTriageItems(query);
+    const results = await prisma.triageItem.findMany({
+      where: {
+        OR: [
+          { symptoms: { contains: query, mode: 'insensitive' } },
+          { patient: { name: { contains: query, mode: 'insensitive' } } }
+        ]
+      },
+      include: {
+        patient: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
     return res.status(200).json(results);
   } catch (error) {
     console.error('Error in search API:', error);

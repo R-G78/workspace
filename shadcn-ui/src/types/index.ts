@@ -1,26 +1,9 @@
-export interface TriageItem {
-  id: string;
-  title: string;
-  description: string;
-  priority: 'critical' | 'high' | 'medium' | 'low';
-  status: 'new' | 'in_progress' | 'resolved' | 'closed';
-  category: string;
-  timestamp: string;
-  patientId?: string;
-  doctorId?: string;
-  symptoms?: string[];
-  vitalSigns?: {
-    temperature?: number;
-    bloodPressure?: string;
-    heartRate?: number;
-    respiratoryRate?: number;
-    oxygenSaturation?: number;
-  };
-  assignedDoctor?: string;
-  waitTime?: number;
-  room?: string;
-  notes?: string[];
-}
+// Re-export types from their respective files
+export * from './patient';
+export * from './doctor';
+export * from './triage';
+export * from './stats';
+export * from './medical';
 
 export interface TriageStats {
   total: number;

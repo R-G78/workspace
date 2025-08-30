@@ -1,0 +1,63 @@
+datasource db {
+  provider     = "mysql"
+  url          = env("DATABASE_URL")
+  relationMode = "prisma"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Patient {
+  id                String       @id @default(cuid())
+  name              String
+  age               Int?
+  gender            String?
+  symptoms          String?      @db.Text
+  medicalHistory    String?      @db.Text
+  status           String       @default("waiting")
+  contactNumber    String?
+  insuranceInfo    String?      @db.Text
+  allergies        Json?
+  currentMedications Json?
+  emergencyContact String?
+  createdAt        DateTime    @default(now()) @map("created_at")
+  triageItems      TriageItem[]
+
+  @@map("patients")
+}
+
+model Doctor {
+  id            String       @id @default(cuid())
+  name          String
+  specialty     String?
+  status        String       @default("active")
+  contactNumber String?
+  department    String?
+  schedule      Json?
+  createdAt     DateTime     @default(now()) @map("created_at")
+  triageItems   TriageItem[]
+
+  @@map("doctors")
+}
+
+model TriageItem {
+  id             String    @id @default(cuid())
+  patientId      String    @map("patient_id")
+  title          String
+  description    String?   @db.Text
+  priority       String    @default("medium")
+  status         String    @default("new")
+  category       String?
+  timestamp      DateTime  @default(now())
+  waitTime       Int?      @map("wait_time")
+  assignedDoctor String?   @map("assigned_doctor")
+  vitalSigns     Json?     @map("vital_signs")
+  vector         Json?
+  patient        Patient   @relation(fields: [patientId], references: [id])
+  doctor         Doctor?   @relation(fields: [assignedDoctor], references: [id])
+
+  @@index([patientId])
+  @@index([assignedDoctor])
+  @@map("triage_items")
+}

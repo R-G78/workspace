@@ -1,6 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { updatePatientStatus } from '@/lib/tidb';
-import { Patient } from '@/types';
+import prisma from '@/lib/prisma';
 
 export default async function handler(
   req: NextApiRequest,
@@ -15,12 +14,30 @@ export default async function handler(
   try {
     switch (req.method) {
       case 'PUT':
-        const patient = req.body as Partial<Patient>;
-        const updatedPatient = await updatePatientStatus(parseInt(id), patient.status!);
+        const updates = req.body;
+        const updatedPatient = await prisma.patient.update({
+          where: { id },
+          data: updates
+        });
         return res.status(200).json(updatedPatient);
       
+      case 'GET':
+        const patient = await prisma.patient.findUnique({
+          where: { id }
+        });
+        if (!patient) {
+          return res.status(404).json({ error: 'Patient not found' });
+        }
+        return res.status(200).json(patient);
+
+      case 'DELETE':
+        await prisma.patient.delete({
+          where: { id }
+        });
+        return res.status(204).end();
+      
       default:
-        res.setHeader('Allow', ['PUT']);
+        res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
         return res.status(405).json({ error: `Method ${req.method} not allowed` });
     }
   } catch (error) {

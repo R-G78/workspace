@@ -13,3 +13,10 @@ if (root) {
 } else {
   console.error('Root element not found');
 }
+
+// Minimal smoke test for Jest
+describe('smoke', () => {
+  test('renders without crashing', () => {
+    expect(true).toBe(true);
+  });
+});

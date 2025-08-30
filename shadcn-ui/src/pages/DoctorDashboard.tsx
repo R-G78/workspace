@@ -27,7 +27,7 @@ const mockPatients: Patient[] = [
       patientId: "P-001",
       title: "Chest Pain and Shortness of Breath",
       description: "Patient reports sudden onset of chest pain radiating to left arm, along with difficulty breathing for the past hour. History of hypertension.",
-      priority: "high",
+      priority: "critical",
       status: "new",
       category: "cardiology",
       timestamp: new Date().toISOString(),
@@ -39,9 +39,15 @@ const mockPatients: Patient[] = [
         respiratoryRate: 24,
         oxygenSaturation: 92
       },
-      vector: [], // This will be generated on the server
+      vector: [0.1, 0.2, 0.3], // Example vector
       symptoms: ["Chest pain", "Shortness of breath", "Sweating", "Anxiety"],
-      notes: []
+      notes: [{
+        id: "N-001",
+        content: "Initial assessment: Patient presents with acute chest pain",
+        timestamp: new Date().toISOString(),
+        author: "Dr. Johnson",
+        type: "observation"
+      }]
     }
   },
   {
@@ -53,8 +59,10 @@ const mockPatients: Patient[] = [
     allergies: ["Sulfa drugs"],
     currentMedications: ["Albuterol inhaler"],
     contactNumber: "555-987-6543",
+    status: "waiting",
     triage: {
       id: "T-002",
+      patientId: "P-002",
       title: "Severe Migraine",
       description: "Patient reports severe headache with light sensitivity and nausea for the past 6 hours. Has history of migraines but states this one is worse than usual.",
       priority: "medium",
@@ -69,7 +77,9 @@ const mockPatients: Patient[] = [
         respiratoryRate: 18,
         oxygenSaturation: 98
       },
+      vector: [0.3, 0.4, 0.5], // Example vector
       symptoms: ["Headache", "Photophobia", "Nausea"],
+      notes: []
     }
   },
   {
@@ -82,8 +92,10 @@ const mockPatients: Patient[] = [
     currentMedications: ["Atorvastatin", "Clopidogrel", "Albuterol"],
     contactNumber: "555-222-3333",
     emergencyContact: "555-333-4444 (Maria Chen, Wife)",
+    status: "in_progress",
     triage: {
       id: "T-003",
+      patientId: "P-003",
       title: "Fall with Hip Pain",
       description: "Patient fell in bathroom approximately 2 hours ago. Complains of severe left hip pain and inability to bear weight. No loss of consciousness reported.",
       priority: "high",
@@ -91,8 +103,8 @@ const mockPatients: Patient[] = [
       category: "orthopedics",
       timestamp: new Date(Date.now() - 7200000).toISOString(),
       waitTime: 15,
+      vector: [0.4, 0.5, 0.6],
       room: "B2",
-      assignedDoctor: "D-002",
       vitalSigns: {
         temperature: 98.4,
         bloodPressure: "145/85",
@@ -100,8 +112,22 @@ const mockPatients: Patient[] = [
         respiratoryRate: 20,
         oxygenSaturation: 95
       },
-      symptoms: ["Hip pain", "Limited mobility", "Bruising"],
-      notes: ["[8/8/2025 10:15 AM] Initial assessment completed. Patient sent for X-ray."]
+      symptoms: ["Hip pain", "Limited mobility", "Pain on weight bearing", "Bruising"],
+      notes: [{
+        id: "N-003",
+        content: "X-ray ordered for left hip. Patient given pain medication.",
+        timestamp: new Date().toISOString(),
+        author: "Dr. Anderson",
+        type: "observation"
+      },
+      {
+        id: "N-002",
+        content: "Initial assessment completed. Patient sent for X-ray.",
+        timestamp: "2025-08-08T10:15:00Z",
+        author: "Dr. Anderson",
+        type: "observation"
+      }],
+      assignedDoctor: "D-002"
     }
   },
   {
@@ -113,8 +139,10 @@ const mockPatients: Patient[] = [
     allergies: ["Latex"],
     currentMedications: ["Oral contraceptives"],
     contactNumber: "555-444-5555",
+    status: "waiting",
     triage: {
       id: "T-004",
+      patientId: "P-004",
       title: "Abdominal Pain",
       description: "Patient reports severe lower right quadrant abdominal pain that started 12 hours ago and has been worsening. Reports nausea and low-grade fever.",
       priority: "high",
@@ -122,6 +150,7 @@ const mockPatients: Patient[] = [
       category: "general",
       timestamp: new Date(Date.now() - 5400000).toISOString(),
       waitTime: 30,
+      vector: [0.5, 0.6, 0.7],
       vitalSigns: {
         temperature: 100.2,
         bloodPressure: "118/75",
@@ -129,7 +158,8 @@ const mockPatients: Patient[] = [
         respiratoryRate: 16,
         oxygenSaturation: 99
       },
-      symptoms: ["Abdominal pain", "Nausea", "Fever", "Loss of appetite"]
+      symptoms: ["Abdominal pain", "Nausea", "Fever", "Loss of appetite"],
+      notes: []
     }
   },
   {
@@ -141,8 +171,10 @@ const mockPatients: Patient[] = [
     allergies: ["Pollen"],
     currentMedications: ["Flovent inhaler"],
     emergencyContact: "555-777-8888 (Jessica Wilson, Mother)",
+    status: "waiting",
     triage: {
       id: "T-005",
+      patientId: "P-005",
       title: "High Fever and Rash",
       description: "Child brought in with fever of 103.5°F and widespread red rash. Mother reports symptoms started this morning. Child is lethargic and has reduced appetite.",
       priority: "medium",
@@ -150,13 +182,15 @@ const mockPatients: Patient[] = [
       category: "pediatrics",
       timestamp: new Date(Date.now() - 2700000).toISOString(),
       waitTime: 40,
+      vector: [0.6, 0.7, 0.8],
       vitalSigns: {
         temperature: 103.5,
         heartRate: 115,
         respiratoryRate: 22,
         oxygenSaturation: 97
       },
-      symptoms: ["Fever", "Rash", "Lethargy"]
+      symptoms: ["Fever", "Rash", "Lethargy"],
+      notes: []
     }
   }
 ];

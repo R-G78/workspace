@@ -1,6 +1,5 @@
 import { NextApiRequest, NextApiResponse } from 'next';
-import { updateTriageItem } from '@/lib/tidb';
-import type { TriageItem } from '@/types';
+import prisma from '@/lib/prisma';
 
 export default async function handler(
   req: NextApiRequest,
@@ -14,12 +13,41 @@ export default async function handler(
 
   try {
     switch (req.method) {
+      case 'GET':
+        const triageItem = await prisma.triageItem.findUnique({
+          where: { id },
+          include: {
+            patient: true
+          }
+        });
+        if (!triageItem) {
+          return res.status(404).json({ error: 'Triage item not found' });
+        }
+        return res.status(200).json(triageItem);
+
       case 'PUT':
-        const updatedItem = await updateTriageItem(id, req.body as TriageItem);
+        const { priority, status, symptoms } = req.body;
+        const updatedItem = await prisma.triageItem.update({
+          where: { id },
+          data: {
+            priority,
+            status,
+            symptoms
+          },
+          include: {
+            patient: true
+          }
+        });
         return res.status(200).json(updatedItem);
       
+      case 'DELETE':
+        await prisma.triageItem.delete({
+          where: { id }
+        });
+        return res.status(204).end();
+
       default:
-        res.setHeader('Allow', ['PUT']);
+        res.setHeader('Allow', ['GET', 'PUT', 'DELETE']);
         return res.status(405).json({ error: `Method ${req.method} not allowed` });
     }
   } catch (error) {

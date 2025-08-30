@@ -1,54 +1,87 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { db } from '@/lib/tidb'
-import type { Patient } from '@/types/patient'
-import type { RowDataPacket } from 'mysql2/promise'
+import prisma from '@/lib/prisma'
+import { withErrorHandler } from '../_middleware'
 
-interface DBPatient extends Patient, RowDataPacket {}
-
-export default async function handler(
+async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
   switch (req.method) {
     case 'GET':
-      try {
-        const patients = await db.query<DBPatient[]>(
-          'SELECT * FROM patients ORDER BY created_at DESC'
-        );
-        return res.status(200).json(patients);
-      } catch (error) {
-        console.error('Error fetching patients:', error);
-        return res.status(500).json({ error: 'Failed to fetch patients' });
-      }
+      const patients = await prisma.patient.findMany({
+        orderBy: {
+          createdAt: 'desc'
+        },
+        include: {
+          triageItems: {
+            select: {
+              id: true,
+              priority: true,
+              status: true,
+              createdAt: true
+            }
+          }
+        }
+      });
+      return res.status(200).json(patients);
 
     case 'POST':
-      try {
-        const { name, symptoms, status } = req.body;
-        const result = await db.query<RowDataPacket[]>(
-          'INSERT INTO patients (name, symptoms, status) VALUES (?, ?, ?)',
-          [name, symptoms, status]
-        );
-        return res.status(201).json(result);
-      } catch (error) {
-        console.error('Error creating patient:', error);
-        return res.status(500).json({ error: 'Failed to create patient' });
+      const { 
+        name, 
+        age, 
+        gender, 
+        contactNumber, 
+        insuranceInfo,
+        medicalHistory,
+        allergies,
+        currentMedications,
+        emergencyContact,
+        symptoms,
+        status = 'waiting'
+      } = req.body;
+
+      if (!name) {
+        return res.status(400).json({ error: 'Name is required' });
       }
 
+      const patient = await prisma.patient.create({
+        data: {
+          name,
+          age: age ? parseInt(age) : null,
+          gender,
+          contactNumber,
+          insuranceInfo,
+          medicalHistory,
+          allergies: allergies ? JSON.stringify(allergies) : null,
+          currentMedications: currentMedications ? JSON.stringify(currentMedications) : null,
+          emergencyContact,
+          symptoms,
+          status
+        },
+        include: {
+          triageItems: true
+        }
+      });
+      return res.status(201).json(patient);
+
     case 'PUT':
-      try {
-        const { id, status } = req.body;
-        const result = await db.query<RowDataPacket[]>(
-          'UPDATE patients SET status = ? WHERE id = ?',
-          [status, id]
-        );
-        return res.status(200).json(result);
-      } catch (error) {
-        console.error('Error updating patient:', error);
-        return res.status(500).json({ error: 'Failed to update patient' });
+      const { id, updatedStatus } = req.body;
+      if (!id) {
+        return res.status(400).json({ error: 'Patient ID is required' });
       }
+      const updatedPatient = await prisma.patient.update({
+        where: { id },
+        data: { status: updatedStatus || status },
+        include: {
+          triageItems: true
+        }
+      });
+      return res.status(200).json(updatedPatient);
 
     default:
       res.setHeader('Allow', ['GET', 'POST', 'PUT']);
-      res.status(405).end(`Method ${req.method} Not Allowed`);
+      return res.status(405).json({ error: `Method ${req.method} Not Allowed` });
   }
 }
+
+export default withErrorHandler(handler);
